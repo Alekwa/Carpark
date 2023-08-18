@@ -1,0 +1,125 @@
+import tkinter as tk
+import time
+
+vehicle_records = {}
+
+def register_vehicle():
+    registration_number = reg_entry.get()
+    time_in = time.strftime("%d-%m-%Y %H:%M:%S")
+    vehicle_records[registration_number] = {"time_in": time_in}
+    reg_entry.delete(0, tk.END)  # Clear the entry field
+    result_label.config(text="Vehicle registered successfully.", fg="green")
+    time.sleep(3)
+    result_label.config(text="")
+
+def release_vehicle():
+    registration_number = release_entry.get()
+    time_out = time.strftime("%d-%m-%Y %H:%M:%S")
+    
+    if registration_number in vehicle_records:
+        time_in = vehicle_records[registration_number]["time_in"]
+        time_difference = time.mktime(time.strptime(time_out, "%d-%m-%Y %H:%M:%S")) - time.mktime(time.strptime(time_in, "%Y-%m-%d %H:%M:%S"))
+        parking_fee = time_difference * 0.03333333
+        vehicle_records[registration_number]["time_out"] = time_out
+        vehicle_records[registration_number]["parking_fee"] = parking_fee
+        release_entry.delete(0, tk.END)  # Clear the entry field
+        result_label.config(text="Parking fee: KES {:.2f}.".format(parking_fee), fg="green")
+        time.sleep(3)
+        result_label.config(text="")
+    else:
+        release_entry.delete(0, tk.END)  # Clear the entry field
+        result_label.config(text="Vehicle not found.", fg="red")
+        time.sleep(3)
+        result_label.config(text="")
+
+def check_vehicle():
+    registration_number = check_entry.get()
+    
+    if registration_number in vehicle_records:
+        vehicle_details = vehicle_records[registration_number]
+        result_label.config(text="Vehicle found.", fg="green")
+        details_label.config(text="Details:\nRegistration number: {}\nTime in: {}\nTime out: {}\nParking fee: KES {}".format(
+            registration_number,
+            vehicle_details["time_in"],
+            vehicle_details.get("time_out", "Not released yet"),
+            vehicle_details.get("parking_fee", "Not calculated yet")
+        ))
+    else:
+        check_entry.delete(0, tk.END)  # Clear the entry field
+        result_label.config(text="Vehicle not found.", fg="red")
+        details_label.config(text="")
+        time.sleep(3)
+        result_label.config(text="")
+
+def display_registered_vehicles():
+    result_label.config(text="Registered Vehicles:", fg="green")
+    details = ""
+    for registration_number, vehicle_details in vehicle_records.items():
+        details += "Registration number: {}\nTime in: {}\nTime out: {}\nParking fee: KES {}\n\n".format(
+            registration_number,
+            vehicle_details["time_in"],
+            vehicle_details.get("time_out", "Not released yet"),
+            vehicle_details.get("parking_fee", "Not calculated yet")
+        )
+    details_label.config(text=details)
+
+# Create the main window
+root = tk.Tk()
+root.title("Car Park Management System")
+
+# Register Vehicle Frame
+reg_frame = tk.Frame(root)
+reg_frame.pack(pady=10)
+
+reg_label = tk.Label(reg_frame, text="Register Vehicle:")
+reg_label.grid(row=0, column=0)
+
+reg_entry = tk.Entry(reg_frame)
+reg_entry.grid(row=0, column=1)
+
+reg_button = tk.Button(reg_frame, text="Register", command=register_vehicle)
+reg_button.grid(row=0, column=2)
+
+# Release Vehicle Frame
+release_frame = tk.Frame(root)
+release_frame.pack(pady=10)
+
+release_label = tk.Label(release_frame, text="Release Vehicle:")
+release_label.grid(row=0, column=0)
+
+release_entry = tk.Entry(release_frame)
+release_entry.grid(row=0, column=1)
+
+release_button = tk.Button(release_frame, text="Release", command=release_vehicle)
+release_button.grid(row=0, column=2)
+
+# Check Vehicle Frame
+check_frame = tk.Frame(root)
+check_frame.pack(pady=10)
+
+check_label = tk.Label(check_frame, text="Check Vehicle:")
+check_label.grid(row=0, column=0)
+
+check_entry = tk.Entry(check_frame)
+check_entry.grid(row=0, column=1)
+
+check_button = tk.Button(check_frame, text="Check", command=check_vehicle)
+check_button.grid(row=0, column=2)
+
+# Display Frame
+display_frame = tk.Frame(root)
+display_frame.pack(pady=10)
+
+display_button = tk.Button(display_frame, text="Display Registered Vehicles", command=display_registered_vehicles)
+display_button.pack()
+
+# Result Label
+result_label = tk.Label(root, text="", fg="green")
+result_label.pack()
+
+# Details Label
+details_label = tk.Label(root, text="")
+details_label.pack()
+
+# Start the main event loop
+root.mainloop()
