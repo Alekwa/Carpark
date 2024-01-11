@@ -1,125 +1,255 @@
-import tkinter as tk
 import time
+import mysql.connector
+import datetime
+
+# Establish a connection to the MySQL database(s)
+
+db_connection = mysql.connector.connect(
+    host="localhost",
+    user="Alekwa",
+    password="root",
+    database="school_project"
+)
+db_cursor = db_connection.cursor()
 
 vehicle_records = {}
 
 def register_vehicle():
-    registration_number = reg_entry.get()
-    time_in = time.strftime("%d-%m-%Y %H:%M:%S")
-    vehicle_records[registration_number] = {"time_in": time_in}
-    reg_entry.delete(0, tk.END)  # Clear the entry field
-    result_label.config(text="Vehicle registered successfully.", fg="green")
-    time.sleep(3)
-    result_label.config(text="")
+    registration_number = input("\nEnter the vehicle registration number: \n")
+    first_name = input("\nEnter the first name of the Car owner: \n")
+    last_name = input("\nEnter the last name of the Car owner: \n")
+    time_in = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Check if the customer already exists
+    query_customer = "SELECT CustomerID FROM Customers WHERE First_Name = %s AND Last_Name = %s"
+    values_customer = (first_name, last_name)
+
+    db_cursor.execute(query_customer, values_customer)
+    existing_customer = db_cursor.fetchone()
+
+    if existing_customer:
+        customer_id = existing_customer[0]
+    else:
+        # Insert into Customers table
+        try:
+            query_insert_customer = "INSERT INTO Customers (First_Name, Last_Name) VALUES (%s, %s)"
+            values_insert_customer = (first_name, last_name)
+            db_cursor.execute(query_insert_customer, values_insert_customer)
+            db_connection.commit()
+
+            # Get the last inserted CustomerID
+            customer_id = db_cursor.lastrowid
+        except mysql.connector.Error as e:
+            print("MySQL Error:", e)
+            db_connection.rollback()
+
+    # Insert into ParkingRecords_ table
+    try:
+        query_insert_parking = "INSERT INTO ParkingRecords_ (RegistrationNumber, CustomerID, TimeIn, Status, SpaceNumber) VALUES (%s, %s, %s, 'Free', NULL)"
+        values_insert_parking = (registration_number, customer_id, time_in)
+        db_cursor.execute(query_insert_parking, values_insert_parking)
+        db_connection.commit()
+        print("\nVehicle registered successfully.\n")
+    except mysql.connector.Error as e:
+        print("MySQL Error:", e)
+        db_connection.rollback()
 
 def release_vehicle():
-    registration_number = release_entry.get()
-    time_out = time.strftime("%d-%m-%Y %H:%M:%S")
-    
-    if registration_number in vehicle_records:
-        time_in = vehicle_records[registration_number]["time_in"]
-        time_difference = time.mktime(time.strptime(time_out, "%d-%m-%Y %H:%M:%S")) - time.mktime(time.strptime(time_in, "%Y-%m-%d %H:%M:%S"))
-        parking_fee = time_difference * 0.03333333
-        vehicle_records[registration_number]["time_out"] = time_out
-        vehicle_records[registration_number]["parking_fee"] = parking_fee
-        release_entry.delete(0, tk.END)  # Clear the entry field
-        result_label.config(text="Parking fee: KES {:.2f}.".format(parking_fee), fg="green")
-        time.sleep(3)
-        result_label.config(text="")
+    registration_number = input("\nEnter the vehicle registration number: \n")
+    time_out = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Check if the vehicle exists and calculate the parking fee
+    query = "SELECT CustomerID, TimeIn FROM ParkingRecords_ WHERE RegistrationNumber = %s"
+    values = (registration_number,)
+
+    # Reconnect the cursor if it's disconnected
+    if not db_connection.is_connected():
+        db_connection.reconnect()
+
+    db_cursor.execute(query, values)
+    record = db_cursor.fetchone()
+
+    if record:
+        customer_id, time_in = record
+        time_difference = (datetime.datetime.strptime(time_out, "%Y-%m-%d %H:%M:%S") - time_in).total_seconds()
+        parking_fee = time_difference * 1
+
+        # Update ParkingRecords_
+        try:
+            query = "UPDATE ParkingRecords_ SET TimeOut = %s, Fee = %s, Status = 'Free' WHERE RegistrationNumber = %s"
+            values = (time_out, parking_fee, registration_number)
+            db_cursor.execute(query, values)
+            db_connection.commit()
+            print("\nParking fee: KES {}.".format(parking_fee))
+        except mysql.connector.Error as e:
+            print("MySQL Error:", e)
+            db_connection.rollback()
     else:
-        release_entry.delete(0, tk.END)  # Clear the entry field
-        result_label.config(text="Vehicle not found.", fg="red")
+        print("\nVehicle not found.\n")
         time.sleep(3)
-        result_label.config(text="")
 
 def check_vehicle():
-    registration_number = check_entry.get()
-    
-    if registration_number in vehicle_records:
-        vehicle_details = vehicle_records[registration_number]
-        result_label.config(text="Vehicle found.", fg="green")
-        details_label.config(text="Details:\nRegistration number: {}\nTime in: {}\nTime out: {}\nParking fee: KES {}".format(
-            registration_number,
-            vehicle_details["time_in"],
-            vehicle_details.get("time_out", "Not released yet"),
-            vehicle_details.get("parking_fee", "Not calculated yet")
-        ))
+    registration_number = input("\nEnter the vehicle registration number: \n")
+
+    # Query the database to get vehicle details
+    query = """
+    SELECT c.First_Name, c.Last_Name, pr.TimeIn, pr.TimeOut, pr.Fee, pr.Status, pr.SpaceNumber
+    FROM Customers c
+    LEFT JOIN ParkingRecords_ pr ON c.CustomerID = pr.CustomerID
+    WHERE pr.RegistrationNumber = %s
+    """
+    values = (registration_number,)
+
+    db_cursor.execute(query, values)
+    vehicle_info = db_cursor.fetchone()
+
+    if vehicle_info:
+        first_name, last_name, time_in, time_out, parking_fee, status, space_number = vehicle_info
+        print("\nVehicle found.\n")
+        print("Details:")
+        print("  First Name of Owner: {}".format(first_name))
+        print("  Last Name of Owner: {}".format(last_name))
+        print("  Registration number: {}".format(registration_number))
+        print("  Time in: {}".format(time_in))
+
+        if time_out is not None and parking_fee is not None:
+            print("  Time out: {}".format(time_out))
+            print("  Parking fee: KES {}".format(parking_fee))
+        else:
+            print("  Time out: Not yet released")
+            print("  Parking fee: Not yet charged")
+
+        print("  Status: {}".format(status))
+        print("  Parking space number: {}".format(space_number))
+
+        time.sleep(5)
     else:
-        check_entry.delete(0, tk.END)  # Clear the entry field
-        result_label.config(text="Vehicle not found.", fg="red")
-        details_label.config(text="")
+        print("\nVehicle not found.\n")
         time.sleep(3)
-        result_label.config(text="")
 
-def display_registered_vehicles():
-    result_label.config(text="Registered Vehicles:", fg="green")
-    details = ""
-    for registration_number, vehicle_details in vehicle_records.items():
-        details += "Registration number: {}\nTime in: {}\nTime out: {}\nParking fee: KES {}\n\n".format(
-            registration_number,
-            vehicle_details["time_in"],
-            vehicle_details.get("time_out", "Not released yet"),
-            vehicle_details.get("parking_fee", "Not calculated yet")
-        )
-    details_label.config(text=details)
+def display_customer_information():
+    try:
+        query = """
+        SELECT c.CustomerID, c.First_Name, c.Last_Name, pr.RegistrationNumber, pr.Status, pr.SpaceNumber
+        FROM Customers c
+        LEFT JOIN ParkingRecords_ pr ON c.CustomerID = pr.CustomerID
+        """
+        db_cursor.execute(query)
+        customer_info = db_cursor.fetchall()
 
-# Create the main window
-root = tk.Tk()
-root.title("Car Park Management System")
+        if customer_info:
 
-# Register Vehicle Frame
-reg_frame = tk.Frame(root)
-reg_frame.pack(pady=10)
+            print("Customer Information:")
 
-reg_label = tk.Label(reg_frame, text="Register Vehicle:")
-reg_label.grid(row=0, column=0)
+            for row in customer_info:
+                customer_id, first_name, last_name, registration_number, status, space_number = row
+                print("Customer ID: {}".format(customer_id))
+                print("First Name of Owner: {}".format(first_name))
+                print("Last Name of Owner: {}".format(last_name))
+                print("Registration number: {}".format(registration_number))
+                print("Status: {}".format(status))
+                print("Parking space number: {}".format(space_number))
+                print("-" * 20)
+        else:
+            print("No customer information found.")
+            
+    except mysql.connector.Error as e:
+        print("MySQL Error:", e)
 
-reg_entry = tk.Entry(reg_frame)
-reg_entry.grid(row=0, column=1)
+def book_parking_space():
+    registration_number = input("\nEnter the vehicle registration number: \n")
+    space_number = input("\nEnter the parking space number: \n")
 
-reg_button = tk.Button(reg_frame, text="Register", command=register_vehicle)
-reg_button.grid(row=0, column=2)
+    # Check if the parking space is available
+    query = "SELECT * FROM ParkingRecords_ WHERE SpaceNumber = %s AND (Status = 'Booked' OR Status = 'Occupied')"
+    values = (space_number,)
 
-# Release Vehicle Frame
-release_frame = tk.Frame(root)
-release_frame.pack(pady=10)
+    if not db_connection.is_connected():
+        db_connection.reconnect()
 
-release_label = tk.Label(release_frame, text="Release Vehicle:")
-release_label.grid(row=0, column=0)
+    db_cursor.execute(query, values)
+    record = db_cursor.fetchone()
 
-release_entry = tk.Entry(release_frame)
-release_entry.grid(row=0, column=1)
+    if not record:
+        try:
+            # Insert into ParkingRecords_ table
+            insert_parking_query = "INSERT INTO ParkingRecords_ (RegistrationNumber, CustomerID, TimeIn, Status, SpaceNumber) VALUES (%s, NULL, NULL, 'Booked', %s)"
+            values = (registration_number, space_number)
+            db_cursor.execute(insert_parking_query, values)
+            db_connection.commit()
 
-release_button = tk.Button(release_frame, text="Release", command=release_vehicle)
-release_button.grid(row=0, column=2)
+            print("\nParking space booked successfully. Complete registration when the car is in the parking area.\n")
+        except mysql.connector.Error as e:
+            print("MySQL Error:", e)
+            db_connection.rollback()
+    else:
+        print("\nThe parking space is already booked or occupied.\n")
+        time.sleep(3)
 
-# Check Vehicle Frame
-check_frame = tk.Frame(root)
-check_frame.pack(pady=10)
+def complete_registration():
+    registration_number = input("\nEnter the vehicle registration number: \n")
+    space_number = input("\nEnter the parking space number: \n")
+    time_in = time.strftime("%Y-%m-%d %H:%M:%S")
 
-check_label = tk.Label(check_frame, text="Check Vehicle:")
-check_label.grid(row=0, column=0)
+    # Check if the parking space is booked
+    query = "SELECT * FROM ParkingRecords_ WHERE RegistrationNumber = %s AND SpaceNumber = %s AND Status = 'Booked'"
+    values = (registration_number, space_number)
 
-check_entry = tk.Entry(check_frame)
-check_entry.grid(row=0, column=1)
+    if not db_connection.is_connected():
+        db_connection.reconnect()
 
-check_button = tk.Button(check_frame, text="Check", command=check_vehicle)
-check_button.grid(row=0, column=2)
+    db_cursor.execute(query, values)
+    record = db_cursor.fetchone()
 
-# Display Frame
-display_frame = tk.Frame(root)
-display_frame.pack(pady=10)
+    if record:
+        try:
+            # Update ParkingRecords_ to mark the space as occupied
+            update_query = "UPDATE ParkingRecords_ SET Status = 'Occupied', TimeIn = %s WHERE RegistrationNumber = %s AND SpaceNumber = %s"
+            values = (time_in, registration_number, space_number)
+            db_cursor.execute(update_query, values)
+            db_connection.commit()
 
-display_button = tk.Button(display_frame, text="Display Registered Vehicles", command=display_registered_vehicles)
-display_button.pack()
+            print("\nRegistration completed. Parking space marked as occupied.\n")
+        except mysql.connector.Error as e:
+            print("MySQL Error:", e)
+            db_connection.rollback()
+    else:
+        print("\nThe parking space is not booked or does not match the provided details.\n")
+        time.sleep(3)
 
-# Result Label
-result_label = tk.Label(root, text="", fg="green")
-result_label.pack()
+def main():
+    while True:
+        print("Choose one of the following options:")
+        print("\n1. Register vehicle\n")
+        print("\n2. Release vehicle\n")
+        print("\n3. Check vehicle\n")
+        print("\n4. Book parking space\n")
+        print("\n5. Complete registration at parking area\n")
+        print("\n7. Display Registered Customers Information\n")
+        print("\n8. Exit\n")
+        option = input("\nEnter your choice: \n")
 
-# Details Label
-details_label = tk.Label(root, text="")
-details_label.pack()
+        if option == "1":
+            register_vehicle()
+        elif option == "2":
+            release_vehicle()
+        elif option == "3":
+            check_vehicle()
+        elif option == "4":
+            book_parking_space()  # Added the new function for booking a parking space
+        elif option == "5":
+            complete_registration()
+        elif option == "7":
+            display_customer_information()
+        elif option == "8":
+            print("\n./././././Exiting./././././\n")
+            time.sleep(2)
+            break
+        else:
+            print("Invalid option :(")
 
-# Start the main event loop
-root.mainloop()
+    db_cursor.close()
+    db_connection.close()
+
+if __name__ == "__main__":
+    main()
