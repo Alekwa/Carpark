@@ -230,7 +230,8 @@ def finish_booking():
 def display_customer_information():
     try:
         query = """
-        SELECT c.CustomerID, c.First_Name, c.Last_Name, pr.RegistrationNumber, pr.SpaceNumber
+        SELECT c.CustomerID, CONCAT(c.First_Name, ' ', c.Last_Name) AS FullName,
+               pr.RegistrationNumber, pr.SpaceNumber, pr.TimeIn, pr.TimeOut
         FROM Customers c
         JOIN ParkingRecords_ pr ON c.CustomerID = pr.CustomerID
         """
@@ -241,19 +242,24 @@ def display_customer_information():
             print("Customer Information:")
 
             for row in customer_info:
-                customer_id, first_name, last_name, registration_number, space_number = row
+                customer_id, full_name, registration_number, space_number, time_in, time_out = row
                 print("Customer ID: {}".format(customer_id))
-                print("First Name of Owner: {}".format(first_name))
-                print("Last Name of Owner: {}".format(last_name))
+                print("Full Name: {}".format(full_name))
                 print("Registration number: {}".format(registration_number))
                 if space_number is not None:
                     print("Parking space occupied: {}".format(space_number))
+                if time_in is not None:
+                    print("Time In: {}".format(time_in))
+                if time_out is not None:
+                    print("Time Out: {}".format(time_out))
                 print("-" * 20)
         else:
             print("No customer information found.")
 
     except mysql.connector.Error as e:
         print("MySQL Error:", e)
+
+
 
 def main():
     while True:
