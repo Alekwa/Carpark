@@ -19,15 +19,26 @@ def register_vehicle():
     last_name = input("\nEnter the last name of the Car owner: \n")
     time_in = time.strftime("%Y-%m-%d %H:%M:%S")
 
-    # Insert into Customers table
-    try:
-        query_insert_customer = "INSERT INTO Customers (First_Name, Last_Name) VALUES (%s, %s)"
-        values_insert_customer = (first_name, last_name)
-        db_cursor.execute(query_insert_customer, values_insert_customer)
-        db_connection.commit()
-    except mysql.connector.Error as e:
-        print("MySQL Error:", e)
-        db_connection.rollback()
+    # Check if the customer already exists
+    query_check_customer = "SELECT CustomerID FROM Customers WHERE First_Name = %s AND Last_Name = %s"
+    values_check_customer = (first_name, last_name)
+
+    db_cursor.execute(query_check_customer, values_check_customer)
+    existing_customer = db_cursor.fetchone()
+
+    if existing_customer:
+        customer_id = existing_customer[0]
+    else:
+        # Insert into Customers table
+        try:
+            query_insert_customer = "INSERT INTO Customers (First_Name, Last_Name) VALUES (%s, %s)"
+            values_insert_customer = (first_name, last_name)
+            db_cursor.execute(query_insert_customer, values_insert_customer)
+            db_connection.commit()
+            customer_id = db_cursor.lastrowid
+        except mysql.connector.Error as e:
+            print("MySQL Error:", e)
+            db_connection.rollback()
 
     # Find an available parking space
     space_number = find_available_parking_space()
@@ -35,8 +46,8 @@ def register_vehicle():
     if space_number is not None:
         # Insert into ParkingRecords_ table with assigned SpaceNumber
         try:
-            query_insert_parking = "INSERT INTO ParkingRecords_ (RegistrationNumber, CustomerID, TimeIn, Status, SpaceNumber) VALUES (%s, LAST_INSERT_ID(), %s, 'Occupied', %s)"
-            values_insert_parking = (registration_number, time_in, space_number)
+            query_insert_parking = "INSERT INTO ParkingRecords_ (RegistrationNumber, CustomerID, TimeIn, Status, SpaceNumber) VALUES (%s, %s, %s, 'Occupied', %s)"
+            values_insert_parking = (registration_number, customer_id, time_in, space_number)
             db_cursor.execute(query_insert_parking, values_insert_parking)
             db_connection.commit()
             print("\nVehicle registered successfully. Parking space assigned: {}\n".format(space_number))
@@ -49,16 +60,23 @@ def register_vehicle():
 
 def find_available_parking_space():
     # Find an available parking space within the maximum capacity
-    query_available_space = "SELECT SpaceNumber FROM ParkingRecords_ WHERE Status = 'Free' AND RegistrationNumber IS NULL ORDER BY SpaceNumber ASC LIMIT 1"
+    query_available_space = "SELECT MIN(SpaceNumber) FROM ParkingRecords_ WHERE Status = 'Free' AND RegistrationNumber IS NULL"
 
     db_cursor.execute(query_available_space)
-    occupied_spaces = set(row[0] for row in db_cursor.fetchall())
+    available_space = db_cursor.fetchone()
 
-    for space_number in range(1, MAX_CAPACITY + 1):
-        if space_number not in occupied_spaces:
-            return space_number
+    if available_space and available_space[0] is not None:
+        return available_space[0]
+    else:
+        # If no available space found, check the next unoccupied space
+        query_next_unoccupied_space = "SELECT MAX(SpaceNumber) + 1 FROM ParkingRecords_"
+        db_cursor.execute(query_next_unoccupied_space)
+        next_unoccupied_space = db_cursor.fetchone()
 
-    return None
+        if next_unoccupied_space and next_unoccupied_space[0] is not None and next_unoccupied_space[0] <= MAX_CAPACITY:
+            return next_unoccupied_space[0]
+        else:
+            return None
 
 def release_vehicle():
     registration_number = input("\nEnter the vehicle registration number: \n")
@@ -82,9 +100,9 @@ def release_vehicle():
 
         # Update ParkingRecords
         try:
-            query = "UPDATE ParkingRecords_ SET TimeOut = %s, Fee = %s WHERE RegistrationNumber = %s"
-            values = (time_out, parking_fee, registration_number)
-            db_cursor.execute(query, values)
+            query_update_parking = "UPDATE ParkingRecords_ SET TimeOut = %s, Fee = %s, Status = 'Free' WHERE RegistrationNumber = %s"
+            values_update_parking = (time_out, parking_fee, registration_number)
+            db_cursor.execute(query_update_parking, values_update_parking)
             db_connection.commit()
             print("\nParking fee: KES {}.".format(parking_fee))
         except mysql.connector.Error as e:
@@ -93,6 +111,7 @@ def release_vehicle():
     else:
         print("\nVehicle not found.\n")
         time.sleep(3)
+
 
         # check parked vehicles
 
