@@ -154,6 +154,79 @@ def check_vehicle():
         print("\nVehicle not found.\n")
         time.sleep(3)
 
+
+def book_parking_space():
+    first_name = input("\nEnter your first name: \n")
+    last_name = input("\nEnter your last name: \n")
+    registration_number = input("\nEnter the vehicle registration number: \n")
+
+    # Check if the customer already exists
+    query_check_customer = "SELECT CustomerID FROM Customers WHERE First_Name = %s AND Last_Name = %s"
+    values_check_customer = (first_name, last_name)
+
+    db_cursor.execute(query_check_customer, values_check_customer)
+    existing_customer = db_cursor.fetchone()
+
+    if existing_customer:
+        customer_id = existing_customer[0]
+    else:
+        # Insert into Customers table
+        try:
+            query_insert_customer = "INSERT INTO Customers (First_Name, Last_Name) VALUES (%s, %s)"
+            values_insert_customer = (first_name, last_name)
+            db_cursor.execute(query_insert_customer, values_insert_customer)
+            db_connection.commit()
+            customer_id = db_cursor.lastrowid
+        except mysql.connector.Error as e:
+            print("MySQL Error:", e)
+            db_connection.rollback()
+
+    # Check if the car is not already booked or occupied
+    query_check_car_status = "SELECT Status FROM ParkingRecords_ WHERE RegistrationNumber = %s AND (Status = 'Booked' OR Status = 'Occupied')"
+    values_check_car_status = (registration_number,)
+
+    db_cursor.execute(query_check_car_status, values_check_car_status)
+    existing_status = db_cursor.fetchone()
+
+    if existing_status:
+        print("Error: This car is already booked or occupying a space. Cannot proceed with booking.")
+        return
+
+    # Find an available parking space for booking
+    space_number = find_available_parking_space()
+
+    if space_number is not None:
+        # Insert into ParkingRecords_ table with assigned SpaceNumber and 'Booked' status
+        try:
+            query_insert_booking = "INSERT INTO ParkingRecords_ (RegistrationNumber, CustomerID, TimeIn, Status, SpaceNumber) VALUES (%s, %s, %s, 'Booked', %s)"
+            values_insert_booking = (registration_number, customer_id, time.strftime("%Y-%m-%d %H:%M:%S"), space_number)
+            db_cursor.execute(query_insert_booking, values_insert_booking)
+            db_connection.commit()
+            print("\nBooking successful. Parking space {} assigned. Please finish your booking when you arrive at the parking area.\n".format(space_number))
+        except mysql.connector.Error as e:
+            print("MySQL Error:", e)
+            db_connection.rollback()
+    else:
+        print("No available parking spaces for booking. Please try again later.")
+        time.sleep(3)
+
+
+def finish_booking():
+    space_number = input("\nEnter the parking space number: \n")
+
+    # Update the status to 'Occupied' for the specified parking space
+    query_finish_booking = "UPDATE ParkingRecords_ SET Status = 'Occupied' WHERE SpaceNumber = %s AND Status = 'Booked'"
+    values_finish_booking = (space_number,)
+
+    try:
+        db_cursor.execute(query_finish_booking, values_finish_booking)
+        db_connection.commit()
+        print("\nBooking finished successfully. Parking space {} marked as occupied.\n".format(space_number))
+    except mysql.connector.Error as e:
+        print("MySQL Error:", e)
+        db_connection.rollback()
+
+
 def display_customer_information():
     try:
         query = """
@@ -188,8 +261,10 @@ def main():
         print("\n1. Register vehicle\n")
         print("\n2. Release vehicle\n")
         print("\n3. Check vehicle\n")
-        print("\n5. Display Registered Customers Information\n")
-        print("\n6. Exit\n")
+        print("\n4. Book parking space\n")
+        print("\n5. Finish booking\n")
+        print("\n6. Display Registered Customers Information\n")
+        print("\n7. Exit\n")
         option = input("\nEnter your choice: \n")
 
         if option == "1":
@@ -198,9 +273,13 @@ def main():
             release_vehicle()
         elif option == "3":
             check_vehicle()
+        elif option == "4":
+            book_parking_space()
         elif option == "5":
-            display_customer_information()
+            finish_booking()
         elif option == "6":
+            display_customer_information()
+        elif option == "7":
             print("\n./././././Exiting./././././\n")
             time.sleep(2)
             break
